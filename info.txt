@@ -1,0 +1,49 @@
+
+ File                Changes needed
+━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ mat_segformer/      Add a modality option to sample discovery and loading. Load the selected input and apply the same
+ datasets/           geometric transforms to every channel and the grayscale mask. Use modality-specific normalization;
+ material_dataset    RGB color jitter should not be applied to polarization or thermal data.
+ .py
+──────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────
+ mat_segformer/      The MiT backbone already accepts in_channels, so it likely needs no architectural change.
+ model/backbone/
+ mix_transformer.
+ py
+──────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────
+ mat_segformer/      Pass the selected input channel count through to the backbone when constructing the model.
+ model/
+ segformer.py
+──────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────
+ mat_segformer/      Add a modality argument, pass it to the dataset, and select the model’s input channel count
+ train.py            accordingly.
+──────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────
+ mat_segformer/      Make the modality and its training hyperparameters configurable here, then pass them to train.py.
+ run_train.sh        Keep outputs/checkpoints distinct for each modality.
+──────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────
+ mat_segformer/      Add the same modality selection and input-loading logic used for training. The selected modality and
+ infer.py and        channel layout must match the checkpoint.
+ mat_segformer/
+ run_infer.sh
+──────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────
+ mat_segformer/      Document the modality names, expected files, channel order, normalization, and commands.
+ README.md
+
+The requested channel layouts would be:
+
+NIR: 1 channel
+AoLP: 2 channels, [aolp_cos, aolp_sin]
+DoLP: 1 channel
+Pol: 3 channels, [aolp_cos, aolp_sin, dolp]
+Thermal static: 1 frame
+Thermal video: 3 frames, [first, middle, last]
+
+A couple of data details need care:
+
+For AoLP, confirm how the stored AoLP values encode angles, then convert that angle to cosine and sine consistently. Don’t treat the encoded AoLP image directly as an angle without checking its convention.
+
+The example thermal_first_frame_aligned.npy appears to be a three-channel colorized image. If it is a false-color visualization rather than scalar temperature data, converting it to grayscale will not recover the thermal values. Check whether a scalar thermal source or its color lookup table is available before choosing the input representation.
+
+Pretrained MiT weights can still initialize most of the model, but the first patch-embedding convolution has a different shape when the input isn’t RGB. You’ll need an explicit policy for adapting that layer; otherwise, its pretrained weights may be skipped.
+
+The prepared grayscale class-ID masks and split JSON can remain as they are. The first implementation decision to settle is the exact file path and value normalization for each modality, especially AoLP and thermal.
